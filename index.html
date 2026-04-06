@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mechanics Order Tracker</title>
+
+<style>
+body {font-family:system-ui;margin:0;padding:14px;background:#f5f7fb;}
+.container {max-width:900px;margin:auto;}
+
+.header {
+background:#fff;
+padding:16px;
+border-radius:14px;
+box-shadow:0 6px 18px rgba(0,0,0,.08);
+margin-bottom:14px;
+}
+
+.title {font-size:22px;font-weight:800;}
+.subtitle {font-size:13px;color:#666;margin-top:6px;}
+
+.toolbar {
+margin-top:12px;
+display:grid;
+grid-template-columns:1fr 120px;
+gap:10px;
+}
+
+input,button {
+padding:12px;
+border-radius:10px;
+border:1px solid #ccc;
+font-size:16px;
+}
+
+button {background:#1f6feb;color:white;border:none;}
+
+.list {display:grid;gap:12px;}
+
+.card {
+background:white;
+padding:14px;
+border-radius:14px;
+box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+
+.item {font-size:20px;font-weight:800;}
+
+.details {
+margin-top:10px;
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:8px;
+}
+
+.box {
+background:#f8fafc;
+padding:10px;
+border-radius:10px;
+}
+
+.label {font-size:11px;color:#666;}
+.value {font-weight:700;font-size:15px;}
+
+.empty {
+text-align:center;
+padding:20px;
+background:white;
+border-radius:14px;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="header">
+<div class="title">Mechanics Order Tracker</div>
+<div class="subtitle">Live list of recently ordered items</div>
+
+<div class="toolbar">
+<input id="search" placeholder="Search items...">
+<button onclick="loadData()">Refresh</button>
+</div>
+</div>
+
+<div id="list" class="list"></div>
+
+</div>
+
+<script>
+
+const SHEET_URL = "PASTE_YOUR_GOOGLE_SHEET_CSV_LINK_HERE";
+
+let data = [];
+
+function parseCSV(text){
+const rows = text.trim().split("\n").map(r=>r.split(","));
+const headers = rows.shift();
+
+return rows.map(r=>{
+let obj = {};
+headers.forEach((h,i)=>obj[h.trim()] = r[i]?.trim() || "");
+return obj;
+});
+}
+
+function render(){
+const list = document.getElementById("list");
+const q = document.getElementById("search").value.toLowerCase();
+
+let filtered = data.filter(r=>{
+return (
+(r["Item"]||"").toLowerCase().includes(q) ||
+(r["Vendor"]||"").toLowerCase().includes(q)
+);
+});
+
+if(filtered.length===0){
+list.innerHTML = `<div class="empty">No items found</div>`;
+return;
+}
+
+list.innerHTML = filtered.map(r=>`
+<div class="card">
+<div class="item">${r["Item"] || "-"}</div>
+
+<div class="details">
+<div class="box">
+<div class="label">Ordered Date</div>
+<div class="value">${r["Ordered Date"] || "-"}</div>
+</div>
+
+<div class="box">
+<div class="label">Vendor</div>
+<div class="value">${r["Vendor"] || "-"}</div>
+</div>
+
+<div class="box">
+<div class="label">Quantity</div>
+<div class="value">${r["Qty"] || "-"}</div>
+</div>
+
+<div class="box">
+<div class="label">ETA</div>
+<div class="value">${r["ETA"] || "-"}</div>
+</div>
+</div>
+</div>
+`).join("");
+}
+
+async function loadData(){
+document.getElementById("list").innerHTML = "Loading...";
+
+const res = await fetch(SHEET_URL + "&t=" + Date.now());
+const text = await res.text();
+
+data = parseCSV(text);
+render();
+}
+
+document.getElementById("search").addEventListener("input", render);
+
+loadData();
+
+</script>
+</body>
+</html>
