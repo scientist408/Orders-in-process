@@ -6,68 +6,92 @@
 <title>Mechanics Order Tracker</title>
 
 <style>
-body {font-family:system-ui;margin:0;padding:14px;background:#f5f7fb;}
-.container {max-width:900px;margin:auto;}
+body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 14px; background: #f5f7fb; }
+.container { max-width: 900px; margin: auto; }
 
 .header {
-background:#fff;
-padding:16px;
-border-radius:14px;
-box-shadow:0 6px 18px rgba(0,0,0,.08);
-margin-bottom:14px;
+  background: #fff;
+  padding: 16px;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  margin-bottom: 14px;
 }
 
-.title {font-size:22px;font-weight:800;}
-.subtitle {font-size:13px;color:#666;margin-top:6px;}
+.title { font-size: 22px; font-weight: 800; }
+.subtitle { font-size: 13px; color: #666; margin-top: 6px; }
 
 .toolbar {
-margin-top:12px;
-display:grid;
-grid-template-columns:1fr 120px;
-gap:10px;
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 10px;
 }
 
-input,button {
-padding:12px;
-border-radius:10px;
-border:1px solid #ccc;
-font-size:16px;
+input, button {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  box-sizing: border-box;
 }
 
-button {background:#1f6feb;color:white;border:none;}
+button {
+  background: #1f6feb;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
 
-.list {display:grid;gap:12px;}
+.list { display: grid; gap: 12px; }
 
 .card {
-background:white;
-padding:14px;
-border-radius:14px;
-box-shadow:0 6px 18px rgba(0,0,0,.08);
+  background: white;
+  padding: 14px;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
 }
 
-.item {font-size:20px;font-weight:800;}
+.item { font-size: 20px; font-weight: 800; }
 
 .details {
-margin-top:10px;
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:8px;
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .box {
-background:#f8fafc;
-padding:10px;
-border-radius:10px;
+  background: #f8fafc;
+  padding: 10px;
+  border-radius: 10px;
 }
 
-.label {font-size:11px;color:#666;}
-.value {font-weight:700;font-size:15px;}
+.label { font-size: 11px; color: #666; }
+.value { font-weight: 700; font-size: 15px; }
 
-.empty {
-text-align:center;
-padding:20px;
-background:white;
-border-radius:14px;
+.empty, .loading, .error {
+  text-align: center;
+  padding: 20px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+}
+
+.error { color: #b42318; }
+
+.debug {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #555;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.05);
+}
+
+@media (max-width: 640px) {
+  .toolbar { grid-template-columns: 1fr; }
+  .details { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -75,96 +99,163 @@ border-radius:14px;
 <body>
 <div class="container">
 
-<div class="header">
-<div class="title">Mechanics Order Tracker</div>
-<div class="subtitle">Live list of recently ordered items</div>
+  <div class="header">
+    <div class="title">Mechanics Order Tracker</div>
+    <div class="subtitle">Live list of recently ordered items</div>
 
-<div class="toolbar">
-<input id="search" placeholder="Search items...">
-<button onclick="loadData()">Refresh</button>
-</div>
-</div>
+    <div class="toolbar">
+      <input id="search" placeholder="Search items...">
+      <button onclick="loadData()">Refresh</button>
+    </div>
+  </div>
 
-<div id="list" class="list"></div>
+  <div id="list" class="list"></div>
+  <div id="debug" class="debug"></div>
 
 </div>
 
 <script>
-
-const SHEET_URL = https://docs.google.com/spreadsheets/d/1UsluPLB4UqYXk06AhWqbjOVXtqp90-geA-9mzHiIfeY/edit?gid=0#gid=0;
+const SHEET_URL = https://docs.google.com/spreadsheets/d/1UsluPLB4UqYXk06AhWqbjOVXtqp90-geA-9mzHiIfeY/export?format=csv&gid=0;
 
 let data = [];
 
-function parseCSV(text){
-const rows = text.trim().split("\n").map(r=>r.split(","));
-const headers = rows.shift();
-
-return rows.map(r=>{
-let obj = {};
-headers.forEach((h,i)=>obj[h.trim()] = r[i]?.trim() || "");
-return obj;
-});
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function render(){
-const list = document.getElementById("list");
-const q = document.getElementById("search").value.toLowerCase();
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
 
-let filtered = data.filter(r=>{
-return (
-(r["Item"]||"").toLowerCase().includes(q) ||
-(r["Vendor"]||"").toLowerCase().includes(q)
-);
-});
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
 
-if(filtered.length===0){
-list.innerHTML = `<div class="empty">No items found</div>`;
-return;
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(cell);
+      if (row.some(v => String(v).trim() !== "")) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    if (row.some(v => String(v).trim() !== "")) rows.push(row);
+  }
+
+  if (rows.length === 0) return [];
+
+  const headers = rows[0].map(h => String(h).trim().replace(/^\uFEFF/, ""));
+  return rows.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (r[i] || "").trim());
+    return obj;
+  });
 }
 
-list.innerHTML = filtered.map(r=>`
-<div class="card">
-<div class="item">${r["Item"] || "-"}</div>
+function render() {
+  const list = document.getElementById("list");
+  const q = document.getElementById("search").value.toLowerCase().trim();
 
-<div class="details">
-<div class="box">
-<div class="label">Ordered Date</div>
-<div class="value">${r["Ordered Date"] || "-"}</div>
-</div>
+  const filtered = data.filter(r => {
+    return (
+      (r["Item"] || "").toLowerCase().includes(q) ||
+      (r["Vendor"] || "").toLowerCase().includes(q)
+    );
+  });
 
-<div class="box">
-<div class="label">Vendor</div>
-<div class="value">${r["Vendor"] || "-"}</div>
-</div>
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty">No items found</div>`;
+    return;
+  }
 
-<div class="box">
-<div class="label">Quantity</div>
-<div class="value">${r["Qty"] || "-"}</div>
-</div>
+  list.innerHTML = filtered.map(r => `
+    <div class="card">
+      <div class="item">${escapeHtml(r["Item"] || "-")}</div>
 
-<div class="box">
-<div class="label">ETA</div>
-<div class="value">${r["ETA"] || "-"}</div>
-</div>
-</div>
-</div>
-`).join("");
+      <div class="details">
+        <div class="box">
+          <div class="label">Ordered Date</div>
+          <div class="value">${escapeHtml(r["Ordered Date"] || "-")}</div>
+        </div>
+
+        <div class="box">
+          <div class="label">Vendor</div>
+          <div class="value">${escapeHtml(r["Vendor"] || "-")}</div>
+        </div>
+
+        <div class="box">
+          <div class="label">Quantity</div>
+          <div class="value">${escapeHtml(r["Qty"] || "-")}</div>
+        </div>
+
+        <div class="box">
+          <div class="label">ETA</div>
+          <div class="value">${escapeHtml(r["ETA"] || "-")}</div>
+        </div>
+      </div>
+    </div>
+  `).join("");
 }
 
-async function loadData(){
-document.getElementById("list").innerHTML = "Loading...";
+async function loadData() {
+  const list = document.getElementById("list");
+  const debug = document.getElementById("debug");
 
-const res = await fetch(SHEET_URL + "&t=" + Date.now());
-const text = await res.text();
+  list.innerHTML = `<div class="loading">Loading...</div>`;
+  debug.textContent = "Loading sheet data...";
 
-data = parseCSV(text);
-render();
+  try {
+    const response = await fetch(SHEET_URL + "&t=" + Date.now(), { cache: "no-store" });
+    const text = await response.text();
+
+    debug.textContent =
+      "HTTP status: " + response.status +
+      " | First 150 chars: " + text.slice(0, 150);
+
+    if (!response.ok) {
+      throw new Error("Sheet request failed");
+    }
+
+    data = parseCSV(text);
+
+    if (!Array.isArray(data) || data.length === 0) {
+      list.innerHTML = `<div class="error">No rows found. Check the sheet headers and CSV link.</div>`;
+      return;
+    }
+
+    render();
+  } catch (err) {
+    list.innerHTML = `<div class="error">Could not load rows. Most likely the Google Sheet link is not a direct public CSV export link.</div>`;
+    debug.textContent = "Error: " + err.message;
+    console.error(err);
+  }
 }
 
 document.getElementById("search").addEventListener("input", render);
 
 loadData();
-
 </script>
 </body>
 </html>
